@@ -1,0 +1,489 @@
+#!/usr/bin/env python
+"""Script for hardware check
+
+A wrapper for srvadmin and other tools
+Usage: hwcheck [item]
+Supported items: cpu memory controller pdisk vdisk controller_bat bios cmos_bat
+                 fan power board_temp cpu_temp
+
+"""
+
+import sys
+import subprocess
+import json
+
+messages = []
+
+
+def addmsg(type, model, index, status, info):
+    m = {}
+    m['type'] = type
+    m['model'] = model
+    m['index'] = index
+    m['status'] = status
+    m['info'] = info
+    messages.append(m)
+
+
+def execute(cmd):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+    return p.communicate()
+
+
+# cpu
+def check_cpu():
+    cmd = 'omreport chassis processors -fmt ssv'
+    stdout, stderr = execute(cmd)
+    cpus = [cpu for cpu in stdout.splitlines() if 'CPU' in cpu]
+
+    for line in cpus:
+        i = line.split(';')
+        Index = i[0].strip()
+        Status = i[1].strip()
+        Connector_Name = i[2].strip()
+        Processor_Brand = i[3].strip()
+        Processor_Version = i[4].strip()
+        Current_Speed = i[5].strip()
+        State = i[6].strip()
+        Core_Count = i[7].strip()
+
+        addmsg('cpu', Processor_Brand, Connector_Name, Status, State)
+
+
+# memory
+def check_memory():
+    cmd = 'omreport chassis memory -fmt ssv'
+    stdout, stderr = execute(cmd)
+    mems = [mem for mem in stdout.splitlines() if 'DIMM' in mem]
+    for line in mems:
+        i = line.split(';')
+        Index = i[0].strip()
+        Status = i[1].strip()
+        Connector_Name = i[2].strip()
+        Type = i[3].strip()
+        Size = i[4].strip()
+
+        addmsg('memory', Type, Connector_Name, Status, Size)
+
+
+# disk controller
+def check_controller():
+    cmd = 'omreport storage controller -fmt ssv'
+    stdout, stderr = execute(cmd)
+    ctrlers = [c for c in stdout.splitlines() if 'Applicable' in c]
+    if not ctrlers:
+        addmsg('controller', "Null", "Null", "Unknown", "Not supported")
+    ids = []
+    for line in ctrlers:
+        i = line.split(';')
+        ID = i[0].strip()
+        Status = i[1].strip()
+        Name = i[2].strip()
+        Slot_ID = i[3].strip()
+        State = i[4].strip()
+        Firmware_Version = i[5].strip()
+        Latest_Available_Firmware_Version = i[6].strip()
+        Driver_Version = i[7].strip()
+        Minimum_Required_Driver_Version = i[8].strip()
+        Storport_Driver_Version = i[9].strip()
+        Minimum_Required_Storport_Driver_Version = i[10].strip()
+        Number_of_Connectors = i[11].strip()
+        Rebuild_Rate = i[12].strip()
+        BGI_Rate = i[13].strip()
+        Check_Consistency_Rate = i[14].strip()
+        Reconstruct_Rate = i[15].strip()
+        Alarm_State = i[16].strip()
+        Cluster_Mode = i[17].strip()
+        SCSI_Initiator_ID = i[18].strip()
+        Cache_Memory_Size = i[19].strip()
+        Patrol_Read_Mode = i[20].strip()
+        Patrol_Read_State = i[21].strip()
+        Patrol_Read_Rate = i[22].strip()
+        Patrol_Read_Iterations = i[23].strip()
+        Abort_Check_Consistency_on_Error = i[24].strip()
+        Allow_Revertible_Hot_Spare_and_Replace_Member = i[25].strip()
+        Load_Balance = i[26].strip()
+        Auto_Replace_Member_on_Predictive_Failure = i[27].strip()
+        Redundant_Path_view = i[28].strip()
+        CacheCade_Capable = i[29].strip()
+        Persistent_Hot_Spare = i[30].strip()
+        Encryption_Capable = i[31].strip()
+        Encryption_Key_Present = i[32].strip()
+        Encryption_Mode = i[33].strip()
+        Preserved_Cache = i[34].strip()
+        if len(i) == 36:
+            T10_Protection_Information_Capable = i[35].strip()
+        elif len(i) == 40:
+            Spin_Down_Unconfigured_Drives = i[35].strip()
+            Spin_Down_Hot_Spares = i[36].strip()
+            Spin_Down_Configured_Drives = i[37].strip()
+            Automatic_Disk_Power_Saving_Idle_C = i[38].strip()
+            T10_Protection_Information_Capable = i[39].strip()
+
+        addmsg('controller', Name, ID, Status, State)
+        ids.append(ID)
+
+    return(ids)
+
+
+# pdisk
+def check_pdisk(ctrlers=[0]):
+    if not ctrlers:
+        addmsg('pdisk', "Null", "Null", "Unknown", "No controller found")
+        return
+    for cid in ctrlers:
+        cmd = 'omreport storage pdisk controller=%s -fmt ssv' % cid
+        stdout, stderr = execute(cmd)
+        pdisks = [p for p in stdout.splitlines() if 'HDD' in p or 'SSD' in p]
+        for line in pdisks:
+            i = line.split(';')
+            ID = i[0].strip()
+            Status = i[1].strip()
+            Name = i[2].strip()
+            State = i[3].strip()
+            Power_Status = i[4].strip()
+            Bus_Protocol = i[5].strip()
+            Media = i[6].strip()
+            Part_of_Cache_Pool = i[7].strip()
+            Remaining_Rated_Write_Endurance = i[8].strip()
+            Failure_Predicted = i[9].strip()
+            Revision = i[10].strip()
+            Driver_Version = i[11].strip()
+            Model_Number = i[12].strip()
+            T10_PI_Capable = i[13].strip()
+            Certified = i[14].strip()
+            Encryption_Capable = i[15].strip()
+            Encrypted = i[16].strip()
+            Progress = i[17].strip()
+            Mirror_Set_ID = i[18].strip()
+            Capacity = i[19].strip()
+            Used_RAID_Disk_Space = i[20].strip()
+            Available_RAID_Disk_Space = i[21].strip()
+            Hot_Spare = i[22].strip()
+            Vendor_ID = i[23].strip()
+            Product_ID = i[24].strip()
+            Serial_No = i[25].strip()
+            Part_Number = i[26].strip()
+            Negotiated_Speed = i[27].strip()
+            Capable_Speed = i[28].strip()
+            PCIe_Maximum_Link_Width = i[29].strip()
+            PCIe_Negotiated_Link_Width = i[30].strip()
+            Sector_Size = i[31].strip()
+            Device_Write_Cache = i[32].strip()
+            Manufacture_Day = i[33].strip()
+            Manufacture_Week = i[34].strip()
+            Manufacture_Year = i[35].strip()
+            SAS_Address = i[36].strip()
+            info = {}
+            info = {'Bus_Protocol': Bus_Protocol, 'Media': Media,
+                    'Capacity': Capacity, 'State': State,
+                    'Vendor_ID': Vendor_ID,
+                    'Serial_No': Serial_No}
+            if Progress != 'Not Applicable':
+                info['Progress'] = Progress
+
+            addmsg('pdisk', Product_ID, ID, Status, info)
+
+
+# vdisk
+def check_vdisk(ctrlers=[0]):
+    if not ctrlers:
+        addmsg('vdisk', "Null", "Null", "Unknown", "No controller found")
+        return
+    for cid in ctrlers:
+        cmd = 'omreport storage vdisk controller=%s -fmt ssv' % cid
+        stdout, stderr = execute(cmd)
+        vdisks = [v for v in stdout.splitlines() if 'HDD' in v or 'SSD' in v]
+        for line in vdisks:
+            i = line.split(';')
+            ID = i[0].strip()
+            Status = i[1].strip()
+            Name = i[2].strip()
+            State = i[3].strip()
+            Hot_Spare_Policy_violated = i[4].strip()
+            if len(i) == 19:
+                Virtual_Disk_Bad_Blocks = i[5].strip()
+                Encrypted = i[6].strip()
+                Layout = i[7].strip()
+                Size = i[8].strip()
+                T10_Protection_Information_Status = i[9].strip()
+                Associated_Fluid_Cache_State = i[10].strip()
+                Device_Name = i[11].strip()
+                Bus_Protocol = i[12].strip()
+                Media = i[13].strip()
+                Read_Policy = i[14].strip()
+                Write_Policy = i[15].strip()
+                Cache_Policy = i[16].strip()
+                Stripe_Element_Size = i[17].strip()
+                Disk_Cache_Policy = i[18].strip()
+            elif len(i) == 18:
+                Encrypted = i[5].strip()
+                Layout = i[6].strip()
+                Size = i[7].strip()
+                T10_Protection_Information_Status = i[8].strip()
+                Associated_Fluid_Cache_State = i[9].strip()
+                Device_Name = i[10].strip()
+                Bus_Protocol = i[11].strip()
+                Media = i[12].strip()
+                Read_Policy = i[13].strip()
+                Write_Policy = i[14].strip()
+                Cache_Policy = i[15].strip()
+                Stripe_Element_Size = i[16].strip()
+                Disk_Cache_Policy = i[17].strip()
+            info = {}
+            info = {'Bus_Protocol': Bus_Protocol, 'Media': Media,
+                    'Device_Name': Device_Name, 'Size': Size, 'State': State}
+            if len(i) == 19:
+                info['Virtual_Disk_Bad_Blocks'] = Virtual_Disk_Bad_Blocks
+
+            addmsg('vdisk', Layout, ID, Status, info)
+
+
+# controller battery
+def check_controller_bat():
+    cmd = 'omreport storage battery -fmt ssv'
+    stdout, stderr = execute(cmd)
+    batteries = [bat for bat in stdout.splitlines() if 'Battery' in bat]
+    if not batteries:
+        addmsg('controller_bat', "Null", "Null", "Unknown", "Not supported")
+        return
+    for line in batteries:
+        i = line.split(';')
+        ID = i[0].strip()
+        Status = i[1].strip()
+        Name = i[2].strip()
+        State = i[3].strip()
+        Recharge_Count = i[4].strip()
+        Max_Recharge_Count = i[5].strip()
+        Learn_State = i[6].strip()
+        Next_Learn_Time = i[7].strip()
+        Maximum_Learn_Delay = i[8].strip()
+        try:
+            Learn_Mode = i[9].strip()
+        except:
+            Learn_Mode = False
+
+        addmsg('controller_bat', Name, ID, Status, Learn_State)
+
+
+# bios
+def check_bios():
+    cmd = 'omreport chassis biossetup -fmt ssv'
+    stdout, stderr = execute(cmd)
+    bsets = [b for b in stdout.splitlines() if 'C State' in b or 'C1-E' in b or
+            'C1E' in b]
+    if not bsets:
+        addmsg('bios', "Null", "Null", "Unknown", "Not supported")
+        return
+    for line in bsets:
+        i = line.split(';')
+        ATTRIBUTE = i[0].strip()
+        VALUE = i[1].strip()
+        if VALUE == 'Enabled':
+            Status = 'warn'
+        elif VALUE == 'Disabled':
+            Status = 'Ok'
+        else:
+            Status = 'unknown'
+        info = [ATTRIBUTE, VALUE]
+
+        addmsg('bios', " ", " ", Status, info)
+
+
+# cmos battery
+def check_cmos_bat():
+    cmd = 'omreport chassis batteries -fmt ssv'
+    stdout, stderr = execute(cmd)
+    bats = [battery for battery in stdout.splitlines() if 'CMOS' in battery]
+    if not bats:
+        addmsg('cmos_bat', "Null", "Null", "Unknown", "Not supported")
+        return
+    for line in bats:
+        i = line.split(';')
+        Index = i[0].strip()
+        Status = i[1].strip()
+        Probe_Name = i[2].strip()
+        Reading = i[3].strip()
+
+        addmsg('cmos_bat', Probe_Name, Index, Status, Reading)
+
+
+# fan
+def check_fan():
+    cmd = 'omreport chassis fans -fmt ssv'
+    stdout, stderr = execute(cmd)
+    fans = [fan for fan in stdout.splitlines() if 'RPM' in fan]
+    if not fans:
+        addmsg('fan', "Null", "Null", "Unknown", "Not supported")
+        return
+    for line in fans:
+        i = line.split(';')
+        Index = i[0].strip()
+        Status = i[1].strip()
+        Probe_Name = i[2].strip()
+        Reading = i[3].strip()
+        Minimum_Warning_Threshold = i[4].strip()
+        Maximum_Warning_Threshold = i[5].strip()
+        Minimum_Failure_Threshold = i[6].strip()
+        Maximum_Failure_Threshold = i[7].strip()
+
+        addmsg('fan', Probe_Name, Index, Status, Reading)
+
+
+# power
+def check_power():
+    cmd = 'omreport chassis pwrmonitoring -fmt ssv'
+    stdout, stderr = execute(cmd)
+    powers = [pwr for pwr in stdout.splitlines() if 'System Board' in pwr]
+    if not powers:
+        addmsg('power', "Null", "Null", "Unknown", "Not supported")
+        return
+    for line in powers:
+        i = line.split(';')
+        Index = i[0].strip()
+        Status = i[1].strip()
+        Probe_Name = i[2].strip()
+        Reading = i[3].strip()
+        Warning_Threshold = i[4].strip()
+        Failure_Threshold = i[5].strip()
+
+        addmsg('power', Probe_Name, Index, Status, Reading)
+
+
+# board temp
+def check_board_temp():
+    cmd = 'omreport chassis temps -fmt ssv'
+    stdout, stderr = execute(cmd)
+    temp = [t for t in stdout.splitlines() if 'Board' in t]
+    if not temp:
+        addmsg('board_temp', "Null", "Null", "Unknown", "Not supported")
+        return
+    for line in temp:
+        i = line.split(';')
+        Index = i[0].strip()
+        Status = i[1].strip()
+        Probe_Name = i[2].strip()
+        Reading = i[3].strip()
+        Minimum_Warning_Threshold = i[4].strip()
+        Maximum_Warning_Threshold = i[5].strip()
+        Minimum_Failure_Threshold = i[6].strip()
+        Maximum_Failure_Threshold = i[7].strip()
+
+        addmsg('board_temp', Probe_Name, Index, Status, Reading)
+
+
+# cpu temp
+def check_cpu_temp():
+    cmd = 'sensors'
+    stdout, stderr = execute(cmd)
+    lines = stdout.splitlines()
+    temps = []
+    id = False
+    temp = {}
+    for line in lines:
+        if line.startswith('coretemp'):
+            if line != id:
+                id = line
+                temp = {}
+                value = 0
+                temp['id'] = id
+        elif line.startswith('Core'):
+            lastcore = True
+            key = line.split(':')[0]
+            vv = line.split(':')[1].split()[0]
+            v = vv.split('\xc2\xb0C')[0].split('+')[1]
+            if float(v) > value:
+                value = float(v)
+                temp['core'] = key
+                temp['reading'] = value
+        elif line == '' and lastcore:
+            if len(temp) != 0:
+                temps.append(temp)
+        else:
+            lastcore = False
+
+    for temp in temps:
+        Index = 'CPU%d %s' % (temps.index(temp), temp['core'])
+        Probe_Name = temp['id']
+        Reading = temp['reading']
+        Maximum_Warning_Threshold = 80
+        Maximum_Failure_Threshold = 90
+        if Reading >= Maximum_Failure_Threshold:
+            Status = 'Critical'
+        elif Reading >= Maximum_Warning_Threshold:
+            Status = 'Warning'
+        else:
+            Status = 'Ok'
+
+        addmsg('cpu_temp', Probe_Name, Index, Status, Reading)
+
+
+def check(target=False):
+    passed = 'false'
+    if not target:
+        check_cpu()
+        check_memory()
+        ctrlers = check_controller()
+        check_pdisk(ctrlers=ctrlers)
+        check_vdisk(ctrlers=ctrlers)
+        check_controller_bat()
+        check_cmos_bat()
+        check_bios()
+        check_fan()
+        check_power()
+        check_board_temp()
+        check_cpu_temp()
+    elif target == 'cpu':
+        check_cpu()
+    elif target == 'memory':
+        check_memory()
+    elif target == 'controller':
+        check_controller()
+    elif target == 'pdisk':
+        c = check_controller()
+        check_pdisk(c)
+    elif target == 'vdisk':
+        c = check_controller()
+        check_vdisk(c)
+    elif target == 'controller_bat':
+        check_controller_bat()
+    elif target == 'cmos_bat':
+        check_cmos_bat()
+    elif target == 'bios':
+        check_bios()
+    elif target == 'fan':
+        check_fan()
+    elif target == 'power':
+        check_power()
+    elif target == 'board_temp':
+        check_board_temp()
+    elif target == 'cpu_temp':
+        check_cpu_temp()
+
+    for m in messages:
+        status = m['status']
+        if status == 'Ok' or status == 'Unknown':
+            passed = True
+        else:
+            passed = False
+            break
+
+    result = {"pass": passed, "message": messages}
+    print json.dumps(result)
+
+
+def main():
+    items = ['cpu', 'memory', 'controller', 'pdisk', 'vdisk', 'controller_bat',
+            'bios', 'cmos_bat', 'fan', 'power', 'board_temp', 'cpu_temp']
+    if len(sys.argv) == 2:
+        target = sys.argv[1]
+        if target not in items:
+            print __doc__
+            sys.exit(66)
+        check(target=target)
+    else:
+        check()
+
+
+if __name__ == '__main__':
+    main()
