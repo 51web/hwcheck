@@ -1,29 +1,51 @@
 #!/usr/bin/env python
-"""Script for hardware check
+"""A wrapper script with srvadmin and other tools for hardware monitor.
 
-A wrapper for srvadmin and other tools
-Usage: hwcheck [item]
-Supported items: cpu memory controller pdisk vdisk controller_bat bios cmos_bat
-                 fan power board_temp cpu_temp
+Supported metrics:
+    cpu memory raidcard pdisk vdisk raidcard_bat
+    bios cmos_bat fan power board_temp cpu_temp
 
 """
 
-import sys
 import subprocess
 import json
+import time
+import socket
+import urllib2
+from optparse import OptionParser
 
+host = socket.gethostname()
 messages = []
+verbs = []
 
-
-def addmsg(type, model, index, status, info):
+def addverb(metric, model, index, status, info):
     m = {}
-    m['type'] = type
+    m['metric'] = metric
     m['model'] = model
     m['index'] = index
     m['status'] = status
     m['info'] = info
+    verbs.append(m)
+
+def addmsg(metric, value):
+    m = {}
+    m['metric'] = 'hw.%s' % metric
+    m['endpoint'] = host
+    m['tags'] = ''
+    m['value'] = value
+    m['timestamp'] = int(time.time())
+    m['step'] = int(step)
+    m['counterType'] = 'GAUGE'
     messages.append(m)
 
+def map_value(state):
+    statemap = {0:['crit', 'critical'],
+                1:['warn', 'warning', 'non-critical'],
+                2:['ok', 'ready']
+                }
+    for i in statemap:
+        if state.lower() in statemap[i]:
+            return i
 
 def execute(cmd):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
@@ -35,19 +57,24 @@ def check_cpu():
     cmd = 'omreport chassis processors -fmt ssv'
     stdout, stderr = execute(cmd)
     cpus = [cpu for cpu in stdout.splitlines() if 'CPU' in cpu]
-
+    value = 2
     for line in cpus:
         i = line.split(';')
-        Index = i[0].strip()
-        Status = i[1].strip()
-        Connector_Name = i[2].strip()
-        Processor_Brand = i[3].strip()
-        Processor_Version = i[4].strip()
-        Current_Speed = i[5].strip()
-        State = i[6].strip()
-        Core_Count = i[7].strip()
+        Index = i[0].strip().lower()
+        Status = i[1].strip().lower()
+        Connector_Name = i[2].strip().lower()
+        Processor_Brand = i[3].strip().lower()
+        Processor_Version = i[4].strip().lower()
+        Current_Speed = i[5].strip().lower()
+        State = i[6].strip().lower()
+        Core_Count = i[7].strip().lower()
+        model = Processor_Brand.split()[3]
+        v = map_value(Status)
+        if v < value:
+            value = v
+        addverb('cpu', model, Connector_Name, Status, State)
 
-        addmsg('cpu', Processor_Brand, Connector_Name, Status, State)
+    addmsg('cpu', value)
 
 
 # memory
@@ -55,25 +82,35 @@ def check_memory():
     cmd = 'omreport chassis memory -fmt ssv'
     stdout, stderr = execute(cmd)
     mems = [mem for mem in stdout.splitlines() if 'DIMM' in mem]
+    value = 2
     for line in mems:
         i = line.split(';')
+        # TODO make sure index here is uniq
         Index = i[0].strip()
-        Status = i[1].strip()
-        Connector_Name = i[2].strip()
-        Type = i[3].strip()
+        Status = i[1].strip().lower()
+        Connector_Name = i[2].strip().lower()
+        Type = i[3].strip().lower()
         Size = i[4].strip()
+        if Status == 'unknown':
+            continue
+        index = Connector_Name.lstrip('dimm_')
+        v = map_value(Status)
+        if v < value:
+            value = v
+        addverb('memory', Type, Connector_Name, Status, Size)
 
-        addmsg('memory', Type, Connector_Name, Status, Size)
+    addmsg('memory', value)
 
 
-# disk controller
-def check_controller():
+# disk radicard
+def check_raidcard():
     cmd = 'omreport storage controller -fmt ssv'
     stdout, stderr = execute(cmd)
     ctrlers = [c for c in stdout.splitlines() if 'Applicable' in c]
-    if not ctrlers:
-        addmsg('controller', "Null", "Null", "Unknown", "Not supported")
     ids = []
+    value = 2
+    if not ctrlers:
+        return
     for line in ctrlers:
         i = line.split(';')
         ID = i[0].strip()
@@ -120,17 +157,21 @@ def check_controller():
             Automatic_Disk_Power_Saving_Idle_C = i[38].strip()
             T10_Protection_Information_Capable = i[39].strip()
 
-        addmsg('controller', Name, ID, Status, State)
+        v = map_value(Status)
+        if v < value:
+            value = v
         ids.append(ID)
+        addverb('raidcard', Name, ID, Status, State)
 
+    addmsg('raidcard', value)
     return(ids)
 
 
 # pdisk
 def check_pdisk(ctrlers=[0]):
     if not ctrlers:
-        addmsg('pdisk', "Null", "Null", "Unknown", "No controller found")
         return
+    value = 2
     for cid in ctrlers:
         cmd = 'omreport storage pdisk controller=%s -fmt ssv' % cid
         stdout, stderr = execute(cmd)
@@ -182,14 +223,19 @@ def check_pdisk(ctrlers=[0]):
             if Progress != 'Not Applicable':
                 info['Progress'] = Progress
 
-            addmsg('pdisk', Product_ID, ID, Status, info)
+            v = map_value(Status)
+            if v < value:
+                value = v
+            addverb('pdisk', Product_ID, ID, Status, info)
+
+    addmsg('pdisk', value)
 
 
 # vdisk
 def check_vdisk(ctrlers=[0]):
     if not ctrlers:
-        addmsg('vdisk', "Null", "Null", "Unknown", "No controller found")
         return
+    value = 2
     for cid in ctrlers:
         cmd = 'omreport storage vdisk controller=%s -fmt ssv' % cid
         stdout, stderr = execute(cmd)
@@ -236,17 +282,21 @@ def check_vdisk(ctrlers=[0]):
             if len(i) == 19:
                 info['Virtual_Disk_Bad_Blocks'] = Virtual_Disk_Bad_Blocks
 
-            addmsg('vdisk', Layout, ID, Status, info)
+            v = map_value(Status)
+            if v < value:
+                value = v
+            addverb('vdisk', Layout, ID, Status, info)
 
+    addmsg('vdisk', value)
 
-# controller battery
-def check_controller_bat():
+# raidcard battery
+def check_raidcard_bat():
     cmd = 'omreport storage battery -fmt ssv'
     stdout, stderr = execute(cmd)
     batteries = [bat for bat in stdout.splitlines() if 'Battery' in bat]
     if not batteries:
-        addmsg('controller_bat', "Null", "Null", "Unknown", "Not supported")
         return
+    value = 2
     for line in batteries:
         i = line.split(';')
         ID = i[0].strip()
@@ -263,8 +313,12 @@ def check_controller_bat():
         except:
             Learn_Mode = False
 
-        addmsg('controller_bat', Name, ID, Status, Learn_State)
+        v = map_value(Status)
+        if v < value:
+            value = v
+        addverb('raidcard_bat', Name, ID, Status, Learn_State)
 
+    addmsg('raidcard_bat', value)
 
 # bios
 def check_bios():
@@ -273,21 +327,28 @@ def check_bios():
     bsets = [b for b in stdout.splitlines() if 'C State' in b or 'C1-E' in b or
             'C1E' in b]
     if not bsets:
-        addmsg('bios', "Null", "Null", "Unknown", "Not supported")
         return
+    value = 2
     for line in bsets:
         i = line.split(';')
-        ATTRIBUTE = i[0].strip()
+        ATTRIBUTE = i[0].strip().lower()
+        if 'c state' in ATTRIBUTE:
+            index = 'cstate'
+        else:
+            index = 'c1e'
         VALUE = i[1].strip()
         if VALUE == 'Enabled':
             Status = 'warn'
         elif VALUE == 'Disabled':
-            Status = 'Ok'
+            Status = 'ok'
         else:
-            Status = 'unknown'
-        info = [ATTRIBUTE, VALUE]
+            continue
+        v = map_value(Status)
+        if v < value:
+            value = v
+        addverb('bios', "bios_setting", ATTRIBUTE, Status, VALUE)
 
-        addmsg('bios', " ", " ", Status, info)
+    addmsg('bios', value)
 
 
 # cmos battery
@@ -296,8 +357,8 @@ def check_cmos_bat():
     stdout, stderr = execute(cmd)
     bats = [battery for battery in stdout.splitlines() if 'CMOS' in battery]
     if not bats:
-        addmsg('cmos_bat', "Null", "Null", "Unknown", "Not supported")
         return
+    value = 2
     for line in bats:
         i = line.split(';')
         Index = i[0].strip()
@@ -305,7 +366,12 @@ def check_cmos_bat():
         Probe_Name = i[2].strip()
         Reading = i[3].strip()
 
-        addmsg('cmos_bat', Probe_Name, Index, Status, Reading)
+        v = map_value(Status)
+        if v < value:
+            value = v
+        addverb('cmos_bat', Probe_Name, Index, Status, Reading)
+
+    addmsg('cmos_bat', value)
 
 
 # fan
@@ -314,8 +380,8 @@ def check_fan():
     stdout, stderr = execute(cmd)
     fans = [fan for fan in stdout.splitlines() if 'RPM' in fan]
     if not fans:
-        addmsg('fan', "Null", "Null", "Unknown", "Not supported")
         return
+    value = 2
     for line in fans:
         i = line.split(';')
         Index = i[0].strip()
@@ -326,8 +392,12 @@ def check_fan():
         Maximum_Warning_Threshold = i[5].strip()
         Minimum_Failure_Threshold = i[6].strip()
         Maximum_Failure_Threshold = i[7].strip()
+        v = map_value(Status)
+        if v < value:
+            value = v
+        addverb('fan', Probe_Name, Index, Status, Reading)
 
-        addmsg('fan', Probe_Name, Index, Status, Reading)
+    addmsg('fan', value)
 
 
 # power
@@ -336,8 +406,8 @@ def check_power():
     stdout, stderr = execute(cmd)
     powers = [pwr for pwr in stdout.splitlines() if 'System Board' in pwr]
     if not powers:
-        addmsg('power', "Null", "Null", "Unknown", "Not supported")
         return
+    value = 2
     for line in powers:
         i = line.split(';')
         Index = i[0].strip()
@@ -346,8 +416,13 @@ def check_power():
         Reading = i[3].strip()
         Warning_Threshold = i[4].strip()
         Failure_Threshold = i[5].strip()
+        v = map_value(Status)
+        w = Reading.split()[0]
+        if w > value:
+            value = w
+        addverb('power', Probe_Name, Index, Status, Reading)
 
-        addmsg('power', Probe_Name, Index, Status, Reading)
+    addmsg('power', value)
 
 
 # board temp
@@ -356,20 +431,24 @@ def check_board_temp():
     stdout, stderr = execute(cmd)
     temp = [t for t in stdout.splitlines() if 'Board' in t]
     if not temp:
-        addmsg('board_temp', "Null", "Null", "Unknown", "Not supported")
         return
+    value = 2
     for line in temp:
         i = line.split(';')
         Index = i[0].strip()
         Status = i[1].strip()
         Probe_Name = i[2].strip()
-        Reading = i[3].strip()
+        Reading = i[3].strip().split()[0]
         Minimum_Warning_Threshold = i[4].strip()
         Maximum_Warning_Threshold = i[5].strip()
         Minimum_Failure_Threshold = i[6].strip()
         Maximum_Failure_Threshold = i[7].strip()
+        v = float(Reading)
+        if v > value:
+            value = v
+        addverb('board_temp', Probe_Name, Index, Status, Reading)
 
-        addmsg('board_temp', Probe_Name, Index, Status, Reading)
+    addmsg('board_temp', value)
 
 
 # cpu temp
@@ -402,31 +481,34 @@ def check_cpu_temp():
         else:
             lastcore = False
 
+    value = 2
     for temp in temps:
-        Index = 'CPU%d %s' % (temps.index(temp), temp['core'])
+        Index = '%d' % temps.index(temp)
         Probe_Name = temp['id']
         Reading = temp['reading']
         Maximum_Warning_Threshold = 80
         Maximum_Failure_Threshold = 90
         if Reading >= Maximum_Failure_Threshold:
-            Status = 'Critical'
+            Status = 'crit'
         elif Reading >= Maximum_Warning_Threshold:
-            Status = 'Warning'
+            Status = 'warn'
         else:
-            Status = 'Ok'
+            Status = 'ok'
+        if Reading > value:
+            value = Reading
+        addverb('cpu_temp', Probe_Name, Index, Status, Reading)
 
-        addmsg('cpu_temp', Probe_Name, Index, Status, Reading)
+    addmsg('cpu_temp', value)
 
 
 def check(target=False):
-    passed = 'false'
     if not target:
         check_cpu()
         check_memory()
-        ctrlers = check_controller()
+        ctrlers = check_raidcard()
         check_pdisk(ctrlers=ctrlers)
         check_vdisk(ctrlers=ctrlers)
-        check_controller_bat()
+        check_raidcard_bat()
         check_cmos_bat()
         check_bios()
         check_fan()
@@ -437,16 +519,16 @@ def check(target=False):
         check_cpu()
     elif target == 'memory':
         check_memory()
-    elif target == 'controller':
-        check_controller()
+    elif target == 'raidcard':
+        check_raidcard()
     elif target == 'pdisk':
-        c = check_controller()
+        c = check_radicard()
         check_pdisk(c)
     elif target == 'vdisk':
-        c = check_controller()
+        c = check_raidcard()
         check_vdisk(c)
-    elif target == 'controller_bat':
-        check_controller_bat()
+    elif target == 'raidcard_bat':
+        check_raidcard_bat()
     elif target == 'cmos_bat':
         check_cmos_bat()
     elif target == 'bios':
@@ -460,30 +542,41 @@ def check(target=False):
     elif target == 'cpu_temp':
         check_cpu_temp()
 
-    for m in messages:
-        status = m['status']
-        if status == 'Ok' or status == 'Unknown':
-            passed = True
-        else:
-            passed = False
-            break
+    return messages
 
-    result = {"pass": passed, "message": messages}
-    print json.dumps(result)
+def push(message):
+    try:
+        urllib2.urlopen(
+            url  = 'http://127.0.0.1:1988/v1/push',
+            data = json.dumps(message)
+            )
+    except:
+        pass
 
-
-def main():
-    items = ['cpu', 'memory', 'controller', 'pdisk', 'vdisk', 'controller_bat',
-            'bios', 'cmos_bat', 'fan', 'power', 'board_temp', 'cpu_temp']
-    if len(sys.argv) == 2:
-        target = sys.argv[1]
-        if target not in items:
-            print __doc__
-            sys.exit(66)
-        check(target=target)
+metrics = ['cpu', 'memory', 'raidcard', 'pdisk', 'vdisk', 'raidcard_bat',
+        'bios', 'cmos_bat', 'fan', 'power', 'board_temp', 'cpu_temp']
+parser = OptionParser()
+parser.add_option("-p", "--push", action="store_true", dest="push", help="push result to agent")
+parser.add_option("-d", "--debug", action="store_true", dest="debug", help="output debug info")
+parser.add_option("-m", "--metric", action="store", dest="metric", help="check special metric")
+parser.add_option("-s", "--step", action="store", dest="step", help="check special metric")
+(options, args) = parser.parse_args()
+if not options.step:
+    step = 600
+else:
+    step = int(options.step)
+metric=None
+if options.metric:
+    metric = options.metric
+    if metric not in metrics:
+        print __doc__
+        parser.print_help()
+        exit(1)
+messages = check(target=metric)
+if options.push:
+    push(messages)
+else:
+    if options.debug:
+        print json.dumps(messages, indent=2)
     else:
-        check()
-
-
-if __name__ == '__main__':
-    main()
+        print json.dumps(verbs, indent=2)

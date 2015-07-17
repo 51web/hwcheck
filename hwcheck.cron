@@ -1,0 +1,4 @@
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/opt/dell/srvadmin/sbin:/opt/dell/srvadmin/bin
+SHELL=/bin/bash
+
+18 * * * * root /usr/bin/hwcheck -s 3600 -p >/dev/null 2>&1 &
