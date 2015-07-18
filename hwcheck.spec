@@ -1,6 +1,6 @@
 Name: hwcheck
 Version: 0.2
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: Scirpts for hardware info check and monitor
 
 Group: Applications/System
@@ -56,6 +56,9 @@ rm -rf %{buildroot}
 %{_sysconfdir}/cron.d/hwcheck
 
 %changelog
+* Sat Jul 18 2015 Gaoyongwei <gaoyongwei@51web.com> - 0.2-2
+- rebuilt
+
 * Fri Jul 17 2015 Gaoyongwei <gaoyongwei@51web.com> - 0.2-1
 - Update to version 0.2,support open-falcon agent
 

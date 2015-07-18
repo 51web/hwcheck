@@ -102,7 +102,7 @@ def check_memory():
     addmsg('memory', value)
 
 
-# disk radicard
+# disk raidcard
 def check_raidcard():
     cmd = 'omreport storage controller -fmt ssv'
     stdout, stderr = execute(cmd)
@@ -522,7 +522,7 @@ def check(target=False):
     elif target == 'raidcard':
         check_raidcard()
     elif target == 'pdisk':
-        c = check_radicard()
+        c = check_raidcard()
         check_pdisk(c)
     elif target == 'vdisk':
         c = check_raidcard()
