@@ -175,7 +175,7 @@ def check_pdisk(ctrlers=[0]):
     for cid in ctrlers:
         cmd = 'omreport storage pdisk controller=%s -fmt ssv' % cid
         stdout, stderr = execute(cmd)
-        pdisks = [p for p in stdout.splitlines() if 'HDD' in p or 'SSD' in p]
+        pdisks = [p for p in stdout.splitlines() if 'bytes' in p]
         for line in pdisks:
             i = line.split(';')
             ID = i[0].strip()
@@ -239,7 +239,7 @@ def check_vdisk(ctrlers=[0]):
     for cid in ctrlers:
         cmd = 'omreport storage vdisk controller=%s -fmt ssv' % cid
         stdout, stderr = execute(cmd)
-        vdisks = [v for v in stdout.splitlines() if 'HDD' in v or 'SSD' in v]
+        vdisks = [v for v in stdout.splitlines() if 'bytes' in v]
         for line in vdisks:
             i = line.split(';')
             ID = i[0].strip()
