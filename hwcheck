@@ -210,11 +210,12 @@ def check_pdisk(ctrlers=[0]):
             PCIe_Maximum_Link_Width = i[29].strip()
             PCIe_Negotiated_Link_Width = i[30].strip()
             Sector_Size = i[31].strip()
-            Device_Write_Cache = i[32].strip()
-            Manufacture_Day = i[33].strip()
-            Manufacture_Week = i[34].strip()
-            Manufacture_Year = i[35].strip()
-            SAS_Address = i[36].strip()
+            if len(i) > 33:
+                Device_Write_Cache = i[32].strip()
+                Manufacture_Day = i[33].strip()
+                Manufacture_Week = i[34].strip()
+                Manufacture_Year = i[35].strip()
+                SAS_Address = i[36].strip()
             info = {}
             info = {'Bus_Protocol': Bus_Protocol, 'Media': Media,
                     'Capacity': Capacity, 'State': State,
@@ -276,6 +277,18 @@ def check_vdisk(ctrlers=[0]):
                 Cache_Policy = i[15].strip()
                 Stripe_Element_Size = i[16].strip()
                 Disk_Cache_Policy = i[17].strip()
+            elif len(i) == 16:
+                Encrypted = i[5].strip()
+                Layout = i[6].strip()
+                Size = i[7].strip()
+                Device_Name = i[8].strip()
+                Bus_Protocol = i[9].strip()
+                Media = i[10].strip()
+                Read_Policy = i[11].strip()
+                Write_Policy = i[12].strip()
+                Cache_Policy = i[13].strip()
+                Stripe_Element_Size = i[14].strip()
+                Disk_Cache_Policy = i[15].strip()
             info = {}
             info = {'Bus_Protocol': Bus_Protocol, 'Media': Media,
                     'Device_Name': Device_Name, 'Size': Size, 'State': State}
