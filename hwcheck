@@ -68,7 +68,10 @@ def check_cpu():
         Current_Speed = i[5].strip().lower()
         State = i[6].strip().lower()
         Core_Count = i[7].strip().lower()
-        model = Processor_Brand.split()[3]
+        try:
+            model = Processor_Brand.split()[3]
+        except:
+            model = Processor_Brand.split()[0]
         v = map_value(Status)
         if v < value:
             value = v
